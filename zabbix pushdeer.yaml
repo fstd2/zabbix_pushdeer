@@ -1,0 +1,126 @@
+zabbix_export:
+  version: '6.0'
+  date: '2023-02-14T17:47:47Z'
+  media_types:
+    -
+      name: 'pushdeer webhook'
+      type: WEBHOOK
+      parameters:
+        -
+          name: alert_message
+          value: '{ALERT.MESSAGE}'
+        -
+          name: alert_subject
+          value: '{ALERT.SUBJECT}'
+        -
+          name: event_id
+          value: '{EVENT.ID}'
+        -
+          name: event_severity
+          value: '{EVENT.SEVERITY}'
+        -
+          name: event_source
+          value: '{EVENT.SOURCE}'
+        -
+          name: event_update_status
+          value: '{EVENT.UPDATE.STATUS}'
+        -
+          name: event_value
+          value: '{EVENT.VALUE}'
+        -
+          name: pushdeer_sendto
+          value: '{ALERT.SENDTO}'
+        -
+          name: pushdeer_token
+          value: {Your Token}
+        -
+          name: pushdeer_url
+          value: 'https://api2.pushdeer.com'
+        -
+          name: pushdeer_user_agent
+          value: Zabbix/6.0
+        -
+          name: trigger_id
+          value: '{TRIGGER.ID}'
+        -
+          name: zabbix_url
+          value: 'Your Zabbix Url/'
+      script: |
+        var linkprocess = {
+            createProblemURL: function (zabbix_url, triggerid, eventid, event_source) {
+                var problem_url = zabbix_url;
+        
+                if (event_source === '0') {
+                    problem_url += 'tr_events.php?triggerid=' + triggerid + '&eventid=' + eventid;
+                }
+        
+                return problem_url;
+            }
+        };
+        
+        
+        try {
+            var params = JSON.parse(value),
+                req = new CurlHttpRequest(),
+                response;
+            if (params.HTTPProxy) {
+                req.setProxy(params.HTTPProxy);
+            }
+            req.AddHeader('Content-Type: application/x-www-form-urlencoded');
+            req.AddHeader('User-Agent: ' + params.pushdeer_user_agent)
+            Zabbix.Log(4, '[ Pushdeer webhook ] Webhook request with value=' + value);
+            problem_url = linkprocess.createProblemURL(params.zabbix_url, params.trigger_id, params.event_id, params.event_source);
+            problem_body = ('Event details in Zabbix：' + '<' + problem_url + '>');
+            response = req.Post(params.pushdeer_url + '/message/push' + '?pushkey=' + params.pushdeer_token + '&type=markdown' + '&text=' + encodeURIComponent(params.alert_subject) + '&desp=' + encodeURIComponent(params.alert_message) + encodeURIComponent(problem_body));
+            Zabbix.Log(4, '[ Pushdeer webhook ] Responded with code: ' + req.Status() + '. Response: ' + response);
+            if (req.Status() != 200 && !response.ok) {
+                throw response.error;
+            }
+            return 'OK';
+        }
+        catch (error) {
+            Zabbix.Log(3, '[ Pushdeer webhook ] Sending failed. Error: ' + error);
+            throw 'Failed with error: ' + error;
+        }
+      message_templates:
+        -
+          event_source: TRIGGERS
+          operation_mode: PROBLEM
+          subject: '# 告警：{EVENT.NAME}'
+          message: |
+            ***
+            * 告警开始时间：{EVENT.TIME} 于 {EVENT.DATE}
+            ***
+            * 告警项目：{EVENT.NAME}
+            * 主机名：{HOST.NAME}
+            * 告警数据： {EVENT.OPDATA}
+            ***
+            * 严重程度：{EVENT.SEVERITY}
+            * 告警ID：{EVENT.ID}
+            ***
+            {TRIGGER.URL}
+        -
+          event_source: TRIGGERS
+          operation_mode: RECOVERY
+          subject: '# 告警恢复：{EVENT.NAME}'
+          message: |
+            ***
+            * 持续时间：{EVENT.DURATION}
+            * 恢复时间：{EVENT.RECOVERY.TIME} 于 {EVENT.RECOVERY.DATE}
+            ***
+            * 告警项目：{EVENT.NAME}
+            * 主机名：{HOST.NAME}
+            ***
+            * 严重程度：{EVENT.SEVERITY}
+            * 告警ID： {EVENT.ID}
+            ***
+            {TRIGGER.URL}
+        -
+          event_source: TRIGGERS
+          operation_mode: UPDATE
+          subject: 'Updated problem in {EVENT.AGE}: {EVENT.NAME}'
+          message: |
+            {USER.FULLNAME} {EVENT.UPDATE.ACTION} problem at {EVENT.UPDATE.DATE} {EVENT.UPDATE.TIME}.
+            {EVENT.UPDATE.MESSAGE}
+            
+            Current problem status is {EVENT.STATUS}, age is {EVENT.AGE}, acknowledged: {EVENT.ACK.STATUS}.
